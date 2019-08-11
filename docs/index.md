@@ -1,3 +1,5 @@
-# Jitters
+Wherein I describe my thought process while porting [a C++ RTP jitter buffer implementation](https://github.com/alpartis/rtp.jitter) to Rust.
 
-Sevag's Rust jitter buffer, step by step porting from C++.
+Contents:
+
+- [Struct alignment](./alignment.html)
