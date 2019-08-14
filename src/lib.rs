@@ -1,21 +1,16 @@
 use byteorder::{ByteOrder, NetworkEndian};
 use rand::{thread_rng, Rng};
-//use hound::{WavReader, WavSpec};
-use std::net::UdpSocket;
 use std::{cmp::min, mem::size_of};
 
-const MAX_PACKET_SIZE: usize = 1400; //some voodoo based on 1500 mtu
+pub const JITTERS_MAX_PACKET_SIZE: usize = 1388; //some voodoo based on 1500 mtu
+
+pub const JITTERS_SAMPLE_RATE: f64 = 44100.0; //we're only using 44100 L16 for now
 
 pub struct RtpOutStream {
     flags: u16,
     sequence: u16,
     timestamp: u32,
     ssrc: u32,
-}
-
-pub struct RtpUdpOutStream {
-    r: RtpOutStream,
-    socket: UdpSocket,
 }
 
 #[repr(C, align(1))]
@@ -49,15 +44,15 @@ impl RtpOutStream {
         };
     }
 
-    fn next_packet(&mut self, audio_slice: &[u8], timestamp_delta: u32) -> Vec<u8> {
-        let ret_size = min(MAX_PACKET_SIZE, size_of::<RtpHeader>() + audio_slice.len());
-        if ret_size > MAX_PACKET_SIZE {
+    pub fn next_packet(&mut self, audio_slice: &[u8], timestamp_delta: u32) -> Vec<u8> {
+        let ret_size = min(JITTERS_MAX_PACKET_SIZE, audio_slice.len());
+        if ret_size > JITTERS_MAX_PACKET_SIZE {
             panic!("fuck you")
         }
 
         let hdr = self.construct_header();
 
-        let mut ret = vec![0u8; ret_size];
+        let mut ret = vec![0u8; ret_size + size_of::<RtpHeader>()];
 
         NetworkEndian::write_u16(&mut ret, hdr.flags);
         NetworkEndian::write_u16(&mut ret[2..], hdr.sequence);
@@ -85,20 +80,6 @@ impl RtpOutStream {
     }
 }
 
-impl RtpUdpOutStream {
-    pub fn new(channels: u16, hostport: &str) -> Self {
-        RtpUdpOutStream {
-            r: RtpOutStream::new(channels),
-            socket: UdpSocket::bind(hostport).unwrap(),
-        }
-    }
-
-    pub fn send_next_packet(&mut self, audio_slice: &[u8], timestamp_delta: u32, dst: &str) {
-        let pkt = self.r.next_packet(audio_slice, timestamp_delta);
-        self.socket.send_to(&pkt, dst).unwrap();
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,7 +90,7 @@ mod tests {
     fn test_max_packet_size() {
         // this looks like a stupid test but it should ensure that i don't blindly change
         // MAX_PACKET_SIZE without considering the implications
-        assert_eq!(MAX_PACKET_SIZE, 1400);
+        assert_eq!(JITTERS_MAX_PACKET_SIZE, 1400);
     }
 
     #[test]
@@ -138,17 +119,5 @@ mod tests {
 
         println!("packet 1: {:#?}", packet_1);
         println!("packet 2: {:#?}", packet_2);
-    }
-
-    #[test]
-    fn test_out_udp() {
-        // mono channel
-        let mut rtp_stream = RtpUdpOutStream::new(1, "127.0.0.1:1337");
-
-        let test_data_1 = vec![1u8, 3u8, 5u8, 7u8];
-        let test_data_2 = vec![2u8, 4u8, 6u8, 8u8];
-
-        rtp_stream.send_next_packet(&test_data_1, 1, "127.0.0.1:1234");
-        rtp_stream.send_next_packet(&test_data_2, 2, "127.0.0.1:1234");
     }
 }
