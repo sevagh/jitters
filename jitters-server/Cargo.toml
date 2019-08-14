@@ -1,7 +1,0 @@
-[package]
-name = "jitters-server"
-version = "0.1.0"
-authors = ["Sevag Hanssian <sevag.hanssian@gmail.com>"]
-edition = "2018"
-
-[dependencies]
