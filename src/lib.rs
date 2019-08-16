@@ -4,7 +4,7 @@ use std::{cmp::min, mem::size_of};
 
 pub const JITTERS_MAX_PACKET_SIZE: usize = 1388; //some voodoo based on 1500 mtu
 
-pub const JITTERS_SAMPLE_RATE: f64 = 44100.0; //we're only using 44100 L16 for now
+pub const JITTERS_SAMPLE_RATE: u32 = 44100; //we're only using 44100 L16 for now
 
 pub struct RtpOutStream {
     flags: u16,
@@ -33,11 +33,13 @@ impl RtpOutStream {
             _ => panic!(),
         }; //L16, 44100, mono vs stereo
 
-        let flags: u16 = 0b000000010 | (pt << 9);
-        //                 MCCCCXPVV
+        let flags: u16 = 0b100000000 | pt;
+        //                 VVPXCCCCM
+        println!("flags: {:#b}", flags);
+        println!("rflags: {:#b}", flags.reverse_bits());
 
         return RtpOutStream {
-            flags,
+            flags: 0b1000000000000000,
             sequence,
             timestamp,
             ssrc,
@@ -54,14 +56,24 @@ impl RtpOutStream {
 
         let mut ret = vec![0u8; ret_size + size_of::<RtpHeader>()];
 
+        println!("{:x?}", &ret[..12]);
         NetworkEndian::write_u16(&mut ret, hdr.flags);
+        println!("{:x?}", &ret[..12]);
+
         NetworkEndian::write_u16(&mut ret[2..], hdr.sequence);
+        println!("{:x?}", &ret[..12]);
+
         NetworkEndian::write_u32(&mut ret[4..], hdr.timestamp);
+        println!("{:x?}", &ret[..12]);
+
         NetworkEndian::write_u32(&mut ret[8..], hdr.ssrc);
+        println!("{:x?}", &ret[..12]);
 
         ret[size_of::<RtpHeader>()..].copy_from_slice(audio_slice);
+        println!("{:x?}", &ret[..12]);
 
         self.increment(timestamp_delta);
+        println!("{:x?}", ret);
         ret
     }
 
