@@ -27,19 +27,16 @@ impl RtpOutStream {
         let timestamp = thread_rng().gen::<u32>();
         let ssrc = thread_rng().gen::<u32>();
 
-        let pt: u16 = match channels {
-            1 => 0b1010,
-            2 => 0b1011,
+        let flags: u16 = match channels {
+            1 => 0b1000000000001010,
+            2 => 0b1000000000001011,
+            //     VVPXCCCCMPPPPPPP
+            //see: https://tools.ietf.org/html/rfc3550#section-5.1
             _ => panic!(),
-        }; //L16, 44100, mono vs stereo
-
-        let flags: u16 = 0b100000000 | pt;
-        //                 VVPXCCCCM
-        println!("flags: {:#b}", flags);
-        println!("rflags: {:#b}", flags.reverse_bits());
+        }; //PT: 10,11 for L16 44100 mono,stereo
 
         return RtpOutStream {
-            flags: 0b1000000000000000,
+            flags,
             sequence,
             timestamp,
             ssrc,
@@ -49,31 +46,20 @@ impl RtpOutStream {
     pub fn next_packet(&mut self, audio_slice: &[u8], timestamp_delta: u32) -> Vec<u8> {
         let ret_size = min(JITTERS_MAX_PACKET_SIZE, audio_slice.len());
         if ret_size > JITTERS_MAX_PACKET_SIZE {
-            panic!("fuck you")
+            panic!("nah")
         }
 
         let hdr = self.construct_header();
 
         let mut ret = vec![0u8; ret_size + size_of::<RtpHeader>()];
 
-        println!("{:x?}", &ret[..12]);
         NetworkEndian::write_u16(&mut ret, hdr.flags);
-        println!("{:x?}", &ret[..12]);
-
         NetworkEndian::write_u16(&mut ret[2..], hdr.sequence);
-        println!("{:x?}", &ret[..12]);
-
         NetworkEndian::write_u32(&mut ret[4..], hdr.timestamp);
-        println!("{:x?}", &ret[..12]);
-
         NetworkEndian::write_u32(&mut ret[8..], hdr.ssrc);
-        println!("{:x?}", &ret[..12]);
 
         ret[size_of::<RtpHeader>()..].copy_from_slice(audio_slice);
-        println!("{:x?}", &ret[..12]);
-
         self.increment(timestamp_delta);
-        println!("{:x?}", ret);
         ret
     }
 
@@ -95,6 +81,7 @@ impl RtpOutStream {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use byteorder::*;
     use memoffset::offset_of;
     use std::mem::size_of;
 
@@ -102,7 +89,7 @@ mod tests {
     fn test_max_packet_size() {
         // this looks like a stupid test but it should ensure that i don't blindly change
         // MAX_PACKET_SIZE without considering the implications
-        assert_eq!(JITTERS_MAX_PACKET_SIZE, 1400);
+        assert_eq!(JITTERS_MAX_PACKET_SIZE, 1388);
     }
 
     #[test]
@@ -131,5 +118,20 @@ mod tests {
 
         println!("packet 1: {:#?}", packet_1);
         println!("packet 2: {:#?}", packet_2);
+    }
+
+    #[test]
+    fn print_byteorder_shit() {
+        let mut dest_buf: Vec<u8> = vec![0u8; 4];
+        let deadbeef: u32 = 0xDEADBEEF;
+
+        LittleEndian::write_u32(&mut dest_buf, deadbeef);
+        println!("little endian: {:X?}", dest_buf);
+
+        BigEndian::write_u32(&mut dest_buf, deadbeef);
+        println!("big endian: {:X?}", dest_buf);
+
+        NetworkEndian::write_u32(&mut dest_buf, deadbeef);
+        println!("network endian: {:X?}", dest_buf);
     }
 }

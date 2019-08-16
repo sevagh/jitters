@@ -1,6 +1,0 @@
-theme: jekyll-theme-cayman
-
-exclude:
-  - Gemfile
-  - Gemfile.lock
-  - Makefile
