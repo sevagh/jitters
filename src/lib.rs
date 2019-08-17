@@ -27,20 +27,25 @@ impl RtpOutStream {
         let timestamp = thread_rng().gen::<u32>();
         let ssrc = thread_rng().gen::<u32>();
 
+        println!(
+            "RANDS: \n\tseq: {:#?}\n\ttst: {:#?}\n\tssrc: {:#?}",
+            sequence, timestamp, ssrc
+        );
+
         let flags: u16 = match channels {
-            1 => 0b1000000000001010,
-            2 => 0b1000000000001011,
-            //     VVPXCCCCMPPPPPPP
+            1 => 0b10_0_0_0000_0_0001011,
+            2 => 0b10_0_0_0000_0_0001010,
+            //     VV P X CCCC M PPPPPPP
             //see: https://tools.ietf.org/html/rfc3550#section-5.1
             _ => panic!(),
         }; //PT: 10,11 for L16 44100 mono,stereo
 
-        return RtpOutStream {
+        RtpOutStream {
             flags,
             sequence,
             timestamp,
             ssrc,
-        };
+        }
     }
 
     pub fn next_packet(&mut self, audio_slice: &[u8], timestamp_delta: u32) -> Vec<u8> {

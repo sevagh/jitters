@@ -36,6 +36,9 @@ fn main() {
         .map(i16::to_sample::<f64>);
     let mut buf = vec![0u8; JITTERS_MAX_PACKET_SIZE];
     let mut time_in_ms = 0u32;
+    let time_incr = ((1000.0 / (JITTERS_SAMPLE_RATE as f64))
+        * (JITTERS_MAX_PACKET_SIZE as f64 / ((2 * file_spec.channels) as f64)))
+        as u32;
 
     match file_spec.channels {
         1 => {
@@ -56,9 +59,7 @@ fn main() {
                     time_in_ms
                 );
                 udp_sock.send_to(&next_packet, "127.0.0.1:1337").unwrap();
-                time_in_ms = ((i as f64)
-                    * ((1000.0 / (JITTERS_SAMPLE_RATE as f64)) * (frames.len() as f64)))
-                    as u32;
+                time_in_ms += time_incr;
             }
         }
         2 => {
@@ -81,9 +82,7 @@ fn main() {
                     time_in_ms
                 );
                 udp_sock.send_to(&next_packet, "127.0.0.1:1337").unwrap();
-                time_in_ms = ((i as f64)
-                    * ((1000.0 / (JITTERS_SAMPLE_RATE as f64)) * (frames.len() as f64)))
-                    as u32;
+                time_in_ms += time_incr;
             }
         }
         _ => panic!("nah"),
