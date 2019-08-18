@@ -1,6 +1,9 @@
 use byteorder::{ByteOrder, NetworkEndian};
 use hound::WavReader;
-use jitters::rtp::{RtpOutStream, JITTERS_MAX_PACKET_SIZE, JITTERS_SAMPLE_RATE};
+use jitters::{
+    rtp::{RtpOutStream, JITTERS_MAX_PACKET_SIZE, JITTERS_SAMPLE_RATE},
+    util::samples_to_ms,
+};
 use sample::{signal, Sample, Signal};
 use std::{env, net::UdpSocket, process};
 
@@ -40,9 +43,7 @@ fn main() {
         .map(i16::to_sample::<f64>);
     let mut buf = vec![0u8; JITTERS_MAX_PACKET_SIZE];
     let mut time_in_ms = 0.0f64;
-    let time_incr = ((1000.0 / (JITTERS_SAMPLE_RATE as f64))
-        * (JITTERS_MAX_PACKET_SIZE as f64 / ((2 * file_spec.channels) as f64)))
-        as f64;
+    let time_incr = samples_to_ms(JITTERS_MAX_PACKET_SIZE, file_spec.channels);
 
     match file_spec.channels {
         1 => {
@@ -60,9 +61,9 @@ fn main() {
                     NetworkEndian::write_i16(&mut buf[2 * j..], single_sample);
                 }
                 let next_packet = if i == last_i {
-                    rtp_stream.last_packet(&buf, time_in_ms as u32)
+                    rtp_stream.last_packet(&buf)
                 } else {
-                    rtp_stream.next_packet(&buf, time_in_ms as u32)
+                    rtp_stream.next_packet(&buf)
                 };
                 println!(
                     "Sent samples at timestamp {:#?}ms with RTP over UDP to {:#?}",
@@ -89,9 +90,9 @@ fn main() {
                     NetworkEndian::write_i16(&mut buf[4 * j + 2..], chan2_sample); //some ratty manual interleaving
                 }
                 let next_packet = if i == last_i {
-                    rtp_stream.last_packet(&buf, time_in_ms as u32)
+                    rtp_stream.last_packet(&buf)
                 } else {
-                    rtp_stream.next_packet(&buf, time_in_ms as u32)
+                    rtp_stream.next_packet(&buf)
                 };
                 println!(
                     "Sent samples at timestamp {:#?}ms with RTP over UDP to 127.0.0.1:1337",

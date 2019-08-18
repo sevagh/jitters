@@ -9,10 +9,7 @@ use crossbeam::{
     queue::{ArrayQueue, PopError, PushError},
     utils::Backoff,
 };
-use jitters::{
-    rtp::{RtpHeader, RtpInStream, JITTERS_MAX_PACKET_SIZE, JITTERS_SAMPLE_RATE},
-    util::samples_to_ms,
-};
+use jitters::rtp::{RtpHeader, RtpInStream, JITTERS_MAX_PACKET_SIZE, JITTERS_SAMPLE_RATE};
 use std::{
     env, mem,
     mem::size_of,
@@ -105,13 +102,7 @@ fn main() {
                         .expect("couldn't play_stream on event_loop");
 
                     let mut next_value_generator = || {
-                        for audio_info in rtp_stream_.audio_slices.iter() {
-                            let (audio_slice, seq, timestamp) = audio_info;
-                            println!(
-                                "Yielding audio slice for sequence {:#?}, timestamp {:#?}ms",
-                                seq,
-                                samples_to_ms(*timestamp as usize, rtp_stream_.channels)
-                            );
+                        for audio_slice in rtp_stream_.audio_slices.iter() {
                             for audio_slice_slice in
                                 audio_slice.chunks(2 * rtp_stream_.channels as usize)
                             {

@@ -19,19 +19,17 @@ pub struct RtpOutStream {
 pub struct RtpInStream {
     first_header: RtpHeader,
     pub channels: u16,
-    pub audio_slices: Vec<Vec<u8>>,
-    sequences: Vec<u16>,
-    timestamps: Vec<u32>,
+    pub audio_slices: Vec<(Vec<u8>, u16, u32)>,
     ended: bool,
 }
 
 #[derive(Default, Debug)]
 #[repr(C, align(1))]
 pub struct RtpHeader {
-    flags: u16,
-    sequence: u16,
-    timestamp: u32,
-    ssrc: u32,
+    pub(crate) flags: u16,
+    pub(crate) sequence: u16,
+    pub(crate) timestamp: u32,
+    pub(crate) ssrc: u32,
 }
 
 impl RtpOutStream {
@@ -56,7 +54,7 @@ impl RtpOutStream {
         }
     }
 
-    pub fn next_packet(&mut self, audio_slice: &[u8], timestamp_delta: u32) -> Vec<u8> {
+    pub fn next_packet(&mut self, audio_slice: &[u8]) -> Vec<u8> {
         let ret_size = min(JITTERS_MAX_PACKET_SIZE, audio_slice.len());
         if ret_size > JITTERS_MAX_PACKET_SIZE {
             panic!("nah")
@@ -72,11 +70,11 @@ impl RtpOutStream {
         NetworkEndian::write_u32(&mut ret[8..], hdr.ssrc);
 
         ret[size_of::<RtpHeader>()..].copy_from_slice(audio_slice);
-        self.increment(timestamp_delta);
+        self.increment(audio_slice.len() as u32);
         ret
     }
 
-    pub fn last_packet(&mut self, audio_slice: &[u8], timestamp_delta: u32) -> Vec<u8> {
+    pub fn last_packet(&mut self, audio_slice: &[u8]) -> Vec<u8> {
         let ret_size = min(JITTERS_MAX_PACKET_SIZE, audio_slice.len());
         if ret_size > JITTERS_MAX_PACKET_SIZE {
             panic!("nah")
@@ -93,7 +91,6 @@ impl RtpOutStream {
         NetworkEndian::write_u32(&mut ret[8..], hdr.ssrc);
 
         ret[size_of::<RtpHeader>()..].copy_from_slice(audio_slice);
-        self.increment(timestamp_delta);
         ret
     }
 
@@ -126,20 +123,14 @@ impl RtpInStream {
         // M - marker bit is set
         // weird for a first packet...
 
-        let mut audio_slices: Vec<Vec<u8>> = Vec::new();
-        let mut sequences: Vec<u16> = Vec::new();
-        let mut timestamps: Vec<u32> = Vec::new();
+        let mut audio_slices: Vec<(Vec<u8>, u16, u32)> = Vec::new();
 
-        audio_slices.push(first_audio);
-        sequences.push(0u16);
-        timestamps.push(0u32);
+        audio_slices.push((first_audio, 0u16, 0u32));
 
         RtpInStream {
             first_header,
             channels,
             audio_slices,
-            sequences,
-            timestamps,
             ended,
         }
     }
@@ -151,22 +142,17 @@ impl RtpInStream {
             != (self.first_header.flags & 0b11111111_0_1111111)
             || next_header.ssrc != self.first_header.ssrc
         {
-            println!("1: {:b}", next_header.flags);
-            println!("2: {:b}", self.first_header.flags);
-            println!("3: {:b}", next_header.flags & 0b11111111_0_1111111);
-            println!("4: {:b}", self.first_header.flags & 0b11111111_0_1111111);
             panic!("this packet might be from a different rtp stream")
         }
 
-        self.audio_slices.push(next_audio);
-
-        self.timestamps
-            .push(next_header.timestamp - self.first_header.timestamp); //decrement the arbitrary initial values
-        self.sequences
-            .push(next_header.sequence - self.first_header.sequence);
+        self.audio_slices.push((
+            next_audio,
+            next_header.sequence - self.first_header.sequence,
+            next_header.timestamp - self.first_header.timestamp,
+        ));
 
         self.ended = ((next_header.flags & 0b1_0000000) >> 7) == 0b1;
-        // check the Market bit again
+        // check the Marker bit again
 
         /* we can do stream quality analysis later
          * by iter over audio_slices, timestamps, sequences
