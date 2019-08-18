@@ -1,3 +1,6 @@
+#![allow(clippy::unreadable_literal, clippy::inconsistent_digit_grouping)]
+// i use ugly binary digit grouping to represent the RTP header fields
+
 use byteorder::{ByteOrder, NetworkEndian};
 use rand::{thread_rng, Rng};
 use std::{cmp::min, mem::size_of};
@@ -16,9 +19,10 @@ pub struct RtpOutStream {
 pub struct RtpInStream {
     first_header: RtpHeader,
     pub channels: u16,
-    audio_slices: Vec<Vec<u8>>,
+    pub audio_slices: Vec<Vec<u8>>,
     sequences: Vec<u16>,
     timestamps: Vec<u32>,
+    ended: bool,
 }
 
 #[derive(Default, Debug)]
@@ -72,6 +76,27 @@ impl RtpOutStream {
         ret
     }
 
+    pub fn last_packet(&mut self, audio_slice: &[u8], timestamp_delta: u32) -> Vec<u8> {
+        let ret_size = min(JITTERS_MAX_PACKET_SIZE, audio_slice.len());
+        if ret_size > JITTERS_MAX_PACKET_SIZE {
+            panic!("nah")
+        }
+
+        let hdr = self.construct_header();
+
+        let mut ret = vec![0u8; ret_size + size_of::<RtpHeader>()];
+
+        println!("End... set the market bit");
+        NetworkEndian::write_u16(&mut ret, hdr.flags | 0b1_0000000); //set the Market bit
+        NetworkEndian::write_u16(&mut ret[2..], hdr.sequence);
+        NetworkEndian::write_u32(&mut ret[4..], hdr.timestamp);
+        NetworkEndian::write_u32(&mut ret[8..], hdr.ssrc);
+
+        ret[size_of::<RtpHeader>()..].copy_from_slice(audio_slice);
+        self.increment(timestamp_delta);
+        ret
+    }
+
     fn increment(&mut self, timestamp_delta: u32) {
         self.timestamp += timestamp_delta;
         self.sequence += 1;
@@ -97,6 +122,10 @@ impl RtpInStream {
             _ => panic!("unsupported payload type"),
         };
 
+        let ended = ((first_header.flags & 0b1_0000000) >> 7) == 0b1;
+        // M - marker bit is set
+        // weird for a first packet...
+
         let mut audio_slices: Vec<Vec<u8>> = Vec::new();
         let mut sequences: Vec<u16> = Vec::new();
         let mut timestamps: Vec<u32> = Vec::new();
@@ -111,14 +140,21 @@ impl RtpInStream {
             audio_slices,
             sequences,
             timestamps,
+            ended,
         }
     }
 
     pub fn next_packet(&mut self, next_packet: &[u8]) {
         let (next_header, next_audio) = RtpHeader::from_buf(next_packet);
-        if next_header.flags != self.first_header.flags
+
+        if (next_header.flags & 0b11111111_0_1111111)
+            != (self.first_header.flags & 0b11111111_0_1111111)
             || next_header.ssrc != self.first_header.ssrc
         {
+            println!("1: {:b}", next_header.flags);
+            println!("2: {:b}", self.first_header.flags);
+            println!("3: {:b}", next_header.flags & 0b11111111_0_1111111);
+            println!("4: {:b}", self.first_header.flags & 0b11111111_0_1111111);
             panic!("this packet might be from a different rtp stream")
         }
 
@@ -129,10 +165,17 @@ impl RtpInStream {
         self.sequences
             .push(next_header.sequence - self.first_header.sequence);
 
+        self.ended = ((next_header.flags & 0b1_0000000) >> 7) == 0b1;
+        // check the Market bit again
+
         /* we can do stream quality analysis later
          * by iter over audio_slices, timestamps, sequences
          * ensuring they're monotonically increasing - that's where jitter can be measured!
          */
+    }
+
+    pub fn ended(&self) -> bool {
+        self.ended
     }
 }
 

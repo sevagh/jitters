@@ -1,9 +1,25 @@
+#![feature(generators, generator_trait)]
+
+use byteorder::{ByteOrder, NetworkEndian};
+use cpal::{
+    self,
+    traits::{EventLoopTrait, HostTrait},
+};
 use crossbeam::{
     queue::{ArrayQueue, PopError, PushError},
     utils::Backoff,
 };
 use jitters::rtp::{RtpHeader, RtpInStream, JITTERS_MAX_PACKET_SIZE, JITTERS_SAMPLE_RATE};
-use std::{env, mem::size_of, net::UdpSocket, process, sync::Arc, thread};
+use std::{
+    env, mem,
+    mem::size_of,
+    net::UdpSocket,
+    ops::{Generator, GeneratorState},
+    pin::Pin,
+    process,
+    sync::{Arc, Mutex},
+    thread,
+};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -11,9 +27,7 @@ fn main() {
         eprintln!("usage: {} listenhostport", args[0]);
         process::exit(-1);
     }
-
     let listenhostport = String::from(&args[1]);
-
     let packet_queue = Arc::new(ArrayQueue::<Vec<u8>>::new(1000));
 
     let put_packet_queue = packet_queue.clone(); // "put" ref to the packet_queue
@@ -30,18 +44,22 @@ fn main() {
         }
     });
 
+    let rtp_stream: Arc<Mutex<Option<RtpInStream>>> = Arc::new(Mutex::new(None));
+
     let get_packet_queue = packet_queue.clone(); // "get" ref to the packet_queue
+    let put_rtp_stream = rtp_stream.clone(); // "put" ref to the RtpInStream
     let getter_thread = thread::spawn(move || {
-        let mut rtp_stream: Option<RtpInStream> = None;
         'outer: loop {
             let backoff = Backoff::new();
             'inner: loop {
+                let mut mutex_guard = put_rtp_stream.lock().unwrap();
                 match get_packet_queue.pop() {
                     Ok(packet) => {
-                        if let Some(ref mut rtp_stream_) = rtp_stream {
+                        if let Some(ref mut rtp_stream_) = *mutex_guard {
                             rtp_stream_.next_packet(&packet);
                         } else {
-                            rtp_stream = Some(RtpInStream::new(&packet));
+                            //rtp_stream = ;
+                            mem::replace(&mut *mutex_guard, Some(RtpInStream::new(&packet)));
                         }
                         continue 'outer;
                     }
@@ -55,6 +73,95 @@ fn main() {
         }
     });
 
+    let play_rtp_stream = rtp_stream.clone(); // "play" ref to the RtpInStream
+    let player_thread = thread::spawn(move || {
+        loop {
+            let backoff = Backoff::new();
+            let mutex_guard = play_rtp_stream.lock().unwrap();
+            if let Some(ref rtp_stream_) = *mutex_guard {
+                if rtp_stream_.ended() {
+                    // play
+                    println!("Stream ended - playing audio...");
+
+                    let host = cpal::default_host();
+                    let event_loop = host.event_loop();
+                    let device = host
+                        .default_output_device()
+                        .expect("no output device available");
+
+                    let format = cpal::Format {
+                        channels: rtp_stream_.channels as cpal::ChannelCount,
+                        sample_rate: cpal::SampleRate(JITTERS_SAMPLE_RATE),
+                        data_type: cpal::SampleFormat::I16,
+                    };
+
+                    let stream_id = event_loop.build_output_stream(&device, &format).unwrap();
+
+                    event_loop
+                        .play_stream(stream_id.clone())
+                        .expect("couldn't play_stream on event_loop");
+
+                    let mut next_value_generator = || {
+                        for audio_slice in rtp_stream_.audio_slices.iter() {
+                            for audio_slice_slice in
+                                audio_slice.chunks(2 * rtp_stream_.channels as usize)
+                            {
+                                let mut ret = vec![0i16; rtp_stream_.channels as usize];
+                                match rtp_stream_.channels {
+                                    1 => {
+                                        ret[0] = NetworkEndian::read_i16(&audio_slice_slice);
+                                    }
+                                    2 => {
+                                        ret[0] = NetworkEndian::read_i16(&audio_slice_slice);
+                                        ret[1] = NetworkEndian::read_i16(&audio_slice_slice[2..]);
+                                    }
+                                    _ => panic!("come on bruh"),
+                                }
+                                yield ret;
+                            }
+                        }
+                        return;
+                    };
+
+                    event_loop.run(move |id, result| {
+                        let data = match result {
+                            Ok(data) => data,
+                            Err(err) => {
+                                eprintln!("an error occurred on stream {:?}: {}", id, err);
+                                return;
+                            }
+                        };
+
+                        match data {
+                            cpal::StreamData::Output {
+                                buffer: cpal::UnknownTypeOutputBuffer::I16(mut buffer),
+                            } => {
+                                for sample in buffer.chunks_mut(format.channels as usize) {
+                                    match Pin::new(&mut next_value_generator).resume() {
+                                        GeneratorState::Yielded(mut x) => {
+                                            for out in sample.iter_mut() {
+                                                for x_ in x.iter_mut() {
+                                                    *out = *x_;
+                                                }
+                                            }
+                                        }
+                                        GeneratorState::Complete(()) => {
+                                            println!("audio done, exiting program");
+                                            process::exit(0);
+                                        }
+                                    }
+                                }
+                            }
+                            _ => (),
+                        }
+                    });
+                }
+            }
+            backoff.snooze();
+        }
+    });
+
     putter_thread.join().expect("udp receiver thread panicked");
     getter_thread.join().expect("rtp in-stream thread panicked");
+    player_thread.join().expect("rtp player thread panicked");
 }

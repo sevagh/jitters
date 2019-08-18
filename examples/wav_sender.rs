@@ -49,12 +49,21 @@ fn main() {
             let signal = signal::from_interleaved_samples_iter::<_, [f64; 1]>(samples);
             let chunkable_signal = signal.until_exhausted().collect::<Vec<_>>();
 
-            for frames in chunkable_signal.chunks(JITTERS_MAX_PACKET_SIZE / 2) {
+            let last_i = chunkable_signal.len() / (JITTERS_MAX_PACKET_SIZE / 2);
+
+            for (i, frames) in chunkable_signal
+                .chunks(JITTERS_MAX_PACKET_SIZE / 2)
+                .enumerate()
+            {
                 for (j, frame) in frames.iter().enumerate() {
                     let single_sample = frame[0].to_sample::<i16>();
                     NetworkEndian::write_i16(&mut buf[2 * j..], single_sample);
                 }
-                let next_packet = rtp_stream.next_packet(&buf, time_in_ms as u32);
+                let next_packet = if i == last_i {
+                    rtp_stream.last_packet(&buf, time_in_ms as u32)
+                } else {
+                    rtp_stream.next_packet(&buf, time_in_ms as u32)
+                };
                 println!(
                     "Sent samples at timestamp {:#?}ms with RTP over UDP to {:#?}",
                     time_in_ms, sendhostport,
@@ -67,14 +76,23 @@ fn main() {
             let signal = signal::from_interleaved_samples_iter::<_, [f64; 2]>(samples);
             let chunkable_signal = signal.until_exhausted().collect::<Vec<_>>();
 
-            for frames in chunkable_signal.chunks(JITTERS_MAX_PACKET_SIZE / 4) {
+            let last_i = chunkable_signal.len() / (JITTERS_MAX_PACKET_SIZE / 4);
+
+            for (i, frames) in chunkable_signal
+                .chunks(JITTERS_MAX_PACKET_SIZE / 4)
+                .enumerate()
+            {
                 for (j, frame) in frames.iter().enumerate() {
                     let chan1_sample = frame[0].to_sample::<i16>();
                     let chan2_sample = frame[1].to_sample::<i16>();
                     NetworkEndian::write_i16(&mut buf[4 * j..], chan1_sample);
                     NetworkEndian::write_i16(&mut buf[4 * j + 2..], chan2_sample); //some ratty manual interleaving
                 }
-                let next_packet = rtp_stream.next_packet(&buf, time_in_ms as u32);
+                let next_packet = if i == last_i {
+                    rtp_stream.last_packet(&buf, time_in_ms as u32)
+                } else {
+                    rtp_stream.next_packet(&buf, time_in_ms as u32)
+                };
                 println!(
                     "Sent samples at timestamp {:#?}ms with RTP over UDP to 127.0.0.1:1337",
                     time_in_ms
