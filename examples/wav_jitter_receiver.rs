@@ -9,7 +9,11 @@ use crossbeam::{
     queue::{ArrayQueue, PopError, PushError},
     utils::Backoff,
 };
-use jitters::rtp::{RtpHeader, RtpInStream, JITTERS_MAX_PACKET_SIZE, JITTERS_SAMPLE_RATE};
+use jitters::{
+    rtp::{RtpHeader, JITTERS_MAX_PACKET_SIZE, JITTERS_SAMPLE_RATE},
+    rtp_jitter::RtpJitterInStream,
+    util::samples_to_ms,
+};
 use std::{
     env, mem,
     mem::size_of,
@@ -44,10 +48,10 @@ fn main() {
         }
     });
 
-    let rtp_stream: Arc<Mutex<Option<RtpInStream>>> = Arc::new(Mutex::new(None));
+    let rtp_stream: Arc<Mutex<Option<RtpJitterInStream>>> = Arc::new(Mutex::new(None));
 
     let get_packet_queue = packet_queue.clone(); // "get" ref to the packet_queue
-    let put_rtp_stream = rtp_stream.clone(); // "put" ref to the RtpInStream
+    let put_rtp_stream = rtp_stream.clone(); // "put" ref to the RtpJitterInStream
     let getter_thread = thread::spawn(move || {
         'outer: loop {
             let backoff = Backoff::new();
@@ -59,7 +63,7 @@ fn main() {
                             rtp_stream_.next_packet(&packet);
                         } else {
                             //rtp_stream = ;
-                            mem::replace(&mut *mutex_guard, Some(RtpInStream::new(&packet)));
+                            mem::replace(&mut *mutex_guard, Some(RtpJitterInStream::new(&packet)));
                         }
                         continue 'outer;
                     }
@@ -73,7 +77,7 @@ fn main() {
         }
     });
 
-    let play_rtp_stream = rtp_stream.clone(); // "play" ref to the RtpInStream
+    let play_rtp_stream = rtp_stream.clone(); // "play" ref to the RtpJitterInStream
     let player_thread = thread::spawn(move || {
         loop {
             let backoff = Backoff::new();
@@ -82,6 +86,8 @@ fn main() {
                 if rtp_stream_.ended() {
                     // play
                     println!("Stream ended - playing audio...");
+
+                    println!("Corrected {:#?} out-of-order packets", rtp_stream_.jitter());
 
                     let host = cpal::default_host();
                     let event_loop = host.event_loop();
@@ -102,7 +108,13 @@ fn main() {
                         .expect("couldn't play_stream on event_loop");
 
                     let mut next_value_generator = || {
-                        for audio_slice in rtp_stream_.audio_slices.iter() {
+                        for audio_info in rtp_stream_.audio_slices.iter() {
+                            let (audio_slice, seq, timestamp) = audio_info;
+                            println!(
+                                "Yielding audio slice for sequence {:#?}, timestamp {:#?}ms",
+                                seq,
+                                samples_to_ms(*timestamp as usize, rtp_stream_.channels)
+                            );
                             for audio_slice_slice in
                                 audio_slice.chunks(2 * rtp_stream_.channels as usize)
                             {

@@ -218,8 +218,8 @@ mod tests {
         let test_data_1 = vec![1u8, 3u8, 5u8, 7u8];
         let test_data_2 = vec![2u8, 4u8, 6u8, 8u8];
 
-        let packet_1 = rtp_stream.next_packet(&test_data_1, 1);
-        let packet_2 = rtp_stream.next_packet(&test_data_2, 2);
+        let packet_1 = rtp_stream.next_packet(&test_data_1);
+        let packet_2 = rtp_stream.next_packet(&test_data_2);
 
         println!("packet 1: {:#?}", packet_1);
         println!("packet 2: {:#?}", packet_2);

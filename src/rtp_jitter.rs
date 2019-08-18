@@ -51,7 +51,7 @@ impl RtpJitterInStream {
         let next_seq = next_header.sequence - self.first_header.sequence; //decrement the random initial values
         let next_tstamp = next_header.timestamp - self.first_header.timestamp;
 
-        let mut swap_idx = self.audio_slices.len();
+        let mut swap_idx = self.audio_slices.len() + 1;
 
         // check if the sequence is in order
         for (i, &(_, seq, _)) in self.audio_slices.iter().enumerate() {
@@ -100,20 +100,31 @@ mod tests {
         let test_data_2 = vec![2u8, 2u8, 2u8, 2u8];
         let test_data_3 = vec![3u8, 3u8, 3u8, 3u8];
 
-        let packet_1 = rtp_out_stream.next_packet(&test_data_1, 1);
-        let packet_2 = rtp_out_stream.next_packet(&test_data_2, 2);
-        let packet_3 = rtp_out_stream.next_packet(&test_data_3, 2);
+        let packet_1 = rtp_out_stream.next_packet(&test_data_1);
+        let packet_2 = rtp_out_stream.next_packet(&test_data_2);
+        let packet_3 = rtp_out_stream.next_packet(&test_data_3);
 
         let mut rtp_in_jitter_stream = RtpJitterInStream::new(&packet_1);
         let mut rtp_in_stream = RtpInStream::new(&packet_1);
 
-        rtp_in_jitter_stream.next_packet(&packet_2);
-        rtp_in_stream.next_packet(&packet_2);
-
         rtp_in_jitter_stream.next_packet(&packet_3);
         rtp_in_stream.next_packet(&packet_3);
 
-        println!("no jitter handling: {:#?}", rtp_in_stream.audio_slices);
-        println!("jitter handling: {:#?}", rtp_in_jitter_stream.audio_slices);
+        rtp_in_jitter_stream.next_packet(&packet_2);
+        rtp_in_stream.next_packet(&packet_2);
+
+        for i in 0..4 {
+            // first packet was sent in order
+            assert_eq!(rtp_in_stream.audio_slices[0].0[i], 1u8);
+            assert_eq!(rtp_in_jitter_stream.audio_slices[0].0[i], 1u8);
+
+            // second was sent out of order
+            assert_eq!(rtp_in_stream.audio_slices[1].0[i], 3u8);
+            assert_eq!(rtp_in_jitter_stream.audio_slices[1].0[i], 2u8);
+
+            // expect the jitter receiver to have corrected it
+            assert_eq!(rtp_in_stream.audio_slices[2].0[i], 2u8);
+            assert_eq!(rtp_in_jitter_stream.audio_slices[2].0[i], 3u8);
+        }
     }
 }
