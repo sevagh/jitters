@@ -9,6 +9,7 @@ pub struct RtpJitterInStream {
     pub audio_slices: Vec<(Vec<u8>, u16, u32)>,
     ended: bool,
     jitter: u32,
+    plc: u32,
 }
 
 impl RtpJitterInStream {
@@ -35,6 +36,7 @@ impl RtpJitterInStream {
             audio_slices,
             ended,
             jitter: 0u32,
+            plc: 0u32,
         }
     }
 
@@ -80,12 +82,43 @@ impl RtpJitterInStream {
          */
     }
 
+    pub fn plc(&mut self) {
+        // we'll use Waveform substitution for packet loss concealment
+        // replace the missing sequences with a copy of the previous
+        let mut i: usize = 1;
+
+        'outer: loop {
+            if i >= self.audio_slices.len() {
+                break 'outer;
+            }
+
+            'inner: loop {
+                //compare two consecutive slices
+                let prev = &self.audio_slices[i - 1].clone();
+                let curr = &self.audio_slices[i].clone();
+
+                if curr.1 - prev.1 == 1 {
+                    break 'inner;
+                }
+                //need to fill in packets between prev and curr - copies of prev
+                self.audio_slices.insert(i, prev.clone());
+                i += 1;
+                self.plc += 1; //increment plc counter
+            }
+
+            i += 1;
+        }
+    }
+
     pub fn ended(&self) -> bool {
         self.ended
     }
 
-    pub fn jitter(&self) -> u32 {
-        self.jitter
+    pub fn jitter_stats(&self) -> String {
+        format!(
+            "corrected {} out-of-order packets, concealed {} lost packets",
+            self.jitter, self.plc
+        )
     }
 }
 

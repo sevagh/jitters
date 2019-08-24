@@ -84,9 +84,10 @@ fn main() {
             if let Some(ref rtp_stream_) = *guard {
                 if rtp_stream_.ended() {
                     // play
-                    println!("Stream ended - playing audio...");
+                    println!("Stream ended - performing plc and playing audio...");
+                    rtp_stream_.plc();
 
-                    println!("Corrected {:#?} out-of-order packets", rtp_stream_.jitter());
+                    println!("Jitter stream stats: {:#?}", rtp_stream_.jitter_stats());
 
                     let host = cpal::default_host();
                     let event_loop = host.event_loop();

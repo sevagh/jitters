@@ -14,12 +14,16 @@ rtp.rs contains some structs for working with a very lean subset of RTP:
 
 There is a struct for an `RtpOutStream` and `RtpInStream` with no jitter correction. The visualization of an RTP packet and the documentation I used to write the bulk of the code comes from [the original RFC](https://tools.ietf.org/html/rfc3550). The structs are very simple - you'll see later in the examples section that I need to perform manual audio interleaving in the underlying vec storage of `RtpOutStream` to stream stereo audio.
 
-rtp_jitter.rs contains an `RtpJitterInStream`. The jitter correction is as follows:
+rtp_jitter.rs contains an `RtpJitterInStream`. Inserts to the `RtpIn` streams should be done with a mutex or lock. The jitter correction is as follows:
 
 1. Store the incoming RTP packets into a `Vec<(Vec<u8>, u16, u32)>` where the `Vec<u8>` represents the audio data, `u16` represents the sequence and the `u32` represents the timestamp.
 2. Iterate over the vector backwards as long as the sequence value is lower than the tail to find the correct insertion order of the packet.
 
-Inserts to the `RtpJitterInStream` must be done with a mutex or lock.
+I've also implemented a form of [packet loss concealment](https://en.wikipedia.org/wiki/Packet_loss_concealment#PLC_techniques). I use waveform substitution:
+
+1. Iterate over the `Vec<(Vec<u8>, u16, u32)>`
+2. If any two consecutive tuples, `storage[i-1], storage[i]`, have a sequence difference greater than 1, insert a copy of `storage[i-1]` at `i` (the rest shifts right)
+3. Repeat until storage represents a contiguous set of evenly spaced sequences
 
 ### examples
 
