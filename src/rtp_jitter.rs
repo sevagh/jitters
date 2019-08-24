@@ -54,11 +54,13 @@ impl RtpJitterInStream {
         let mut swap_idx = self.audio_slices.len() + 1;
 
         // check if the sequence is in order
-        for (i, &(_, seq, _)) in self.audio_slices.iter().enumerate() {
-            if next_seq < seq {
-                swap_idx = i;
+        for i in (0..self.audio_slices.len()).rev() {
+            let seq_cmp = self.audio_slices[i].1;
+            if next_seq > seq_cmp {
                 break;
             }
+            swap_idx = i;
+            continue;
         }
 
         self.audio_slices.push((next_audio, next_seq, next_tstamp));
@@ -70,7 +72,7 @@ impl RtpJitterInStream {
         }
 
         self.ended = ((next_header.flags & 0b1_0000000) >> 7) == 0b1;
-        // check the Market bit again
+        // check the Marker bit again
 
         /* we can do stream quality analysis later
          * by iter over audio_slices, timestamps, sequences

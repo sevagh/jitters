@@ -21,7 +21,7 @@ use std::{
     ops::{Generator, GeneratorState},
     pin::Pin,
     process,
-    sync::{Arc, Mutex},
+    sync::{Arc, RwLock},
     thread,
 };
 
@@ -48,7 +48,7 @@ fn main() {
         }
     });
 
-    let rtp_stream: Arc<Mutex<Option<RtpJitterInStream>>> = Arc::new(Mutex::new(None));
+    let rtp_stream: Arc<RwLock<Option<RtpJitterInStream>>> = Arc::new(RwLock::new(None));
 
     let get_packet_queue = packet_queue.clone(); // "get" ref to the packet_queue
     let put_rtp_stream = rtp_stream.clone(); // "put" ref to the RtpJitterInStream
@@ -56,14 +56,13 @@ fn main() {
         'outer: loop {
             let backoff = Backoff::new();
             'inner: loop {
-                let mut mutex_guard = put_rtp_stream.lock().unwrap();
+                let mut guard = put_rtp_stream.write().unwrap();
                 match get_packet_queue.pop() {
                     Ok(packet) => {
-                        if let Some(ref mut rtp_stream_) = *mutex_guard {
+                        if let Some(ref mut rtp_stream_) = *guard {
                             rtp_stream_.next_packet(&packet);
                         } else {
-                            //rtp_stream = ;
-                            mem::replace(&mut *mutex_guard, Some(RtpJitterInStream::new(&packet)));
+                            mem::replace(&mut *guard, Some(RtpJitterInStream::new(&packet)));
                         }
                         continue 'outer;
                     }
@@ -81,8 +80,8 @@ fn main() {
     let player_thread = thread::spawn(move || {
         loop {
             let backoff = Backoff::new();
-            let mutex_guard = play_rtp_stream.lock().unwrap();
-            if let Some(ref rtp_stream_) = *mutex_guard {
+            let guard = play_rtp_stream.read().unwrap();
+            if let Some(ref rtp_stream_) = *guard {
                 if rtp_stream_.ended() {
                     // play
                     println!("Stream ended - playing audio...");
