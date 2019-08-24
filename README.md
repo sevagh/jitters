@@ -29,7 +29,7 @@ I've also implemented a form of [packet loss concealment](https://en.wikipedia.o
 
 #### wav_sender
 
-`wav_sender.rs` uses the [hound](https://github.com/ruuda/hound/) crate to convert a WAV file to an outgoing RTP stream. The stream is recognized by Wireshark and ffplay.
+`wav_sender.rs` uses the [hound](https://github.com/ruuda/hound/) crate to convert a WAV file to an outgoing RTP stream. The stream is recognized by wireshark and ffplay.
 
 In one command prompt, run `ffplay`:
 
@@ -116,7 +116,3 @@ Currently in progress - an XDP program that will intercept and swap around the R
 ### android
 
 Coming soon - compiling jitters for NDK, and using [Oboe](https://github.com/google/oboe) to stream audio from an Android phone's microphone to an RtpServer running on Linux.
-
-### wireshark
-
-Coming soon - a custom wireshark dissector for performing a streaming FFT on the audio buffers in the RTP packets. This is more for show than useful.
