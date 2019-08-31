@@ -80,8 +80,10 @@ fn main() {
     let player_thread = thread::spawn(move || {
         loop {
             let backoff = Backoff::new();
-            let guard = play_rtp_stream.read().unwrap();
-            if let Some(ref rtp_stream_) = *guard {
+            let mut guard = play_rtp_stream.write().unwrap();
+            // using read instead of write due to plc
+
+            if let Some(ref mut rtp_stream_) = *guard {
                 if rtp_stream_.ended() {
                     // play
                     println!("Stream ended - performing plc and playing audio...");
