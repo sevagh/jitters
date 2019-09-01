@@ -12,18 +12,7 @@ rtp.rs contains some structs for working with a very lean subset of RTP:
 * The initial sequence and timestamp are selected randomly, as recommended by the RFC
     * The sequence is incremented by 1, the timestamp is incremented by the number of samples sent in the packet (i.e. `JITTERS_MAX_PACKET_SIZE - size_of::<RtpHeader>() = 1400 - 12 = 1388`). The timestamp can be converted to `ms` by the receiver using the sample rate
 
-There is a struct for an `RtpOutStream` and `RtpInStream` with no jitter correction. The visualization of an RTP packet and the documentation I used to write the bulk of the code comes from [the original RFC](https://tools.ietf.org/html/rfc3550). The structs are very simple - you'll see later in the examples section that I need to perform manual audio interleaving in the underlying vec storage of `RtpOutStream` to stream stereo audio.
-
-rtp_jitter.rs contains an `RtpJitterInStream`. Inserts to the `RtpIn` streams should be done with a mutex or lock. The jitter correction is as follows:
-
-1. Store the incoming RTP packets into a `Vec<(Vec<u8>, u16, u32)>` where the `Vec<u8>` represents the audio data, `u16` represents the sequence and the `u32` represents the timestamp.
-2. Iterate over the vector backwards as long as the sequence value is lower than the tail to find the correct insertion order of the packet.
-
-I've also implemented a form of [packet loss concealment](https://en.wikipedia.org/wiki/Packet_loss_concealment#PLC_techniques). I use waveform substitution:
-
-1. Iterate over the `Vec<(Vec<u8>, u16, u32)>`
-2. If any two consecutive tuples, `storage[i-1], storage[i]`, have a sequence difference greater than 1, insert a copy of `storage[i-1]` at `i` (the rest shifts right)
-3. Repeat until storage represents a contiguous set of evenly spaced sequences
+I wrote the bulk of the code from [the original RFC](https://tools.ietf.org/html/rfc3550). I've also implemented waveform substitution for [packet loss concealment](https://en.wikipedia.org/wiki/Packet_loss_concealment#PLC_techniques).
 
 ### examples
 
@@ -64,14 +53,6 @@ Sent samples at timestamp 23.605442176870746ms with RTP over UDP to 127.0.0.1:13
 
 ### wav_receiver, wav_jitter_receiver
 
-Both examples have a similar threaded structure. There's a [crossbeam ArrayQueue](https://docs.rs/crossbeam/0.7.2/crossbeam/queue/struct.ArrayQueue.html) used as an SPSC between the UDP listener thread and `RtpIn` populator thread.
-
-1. thread 1: read from UDP socket, put packets in an ArrayQueue
-2. thread 2: read packets from the ArrayQueue, put them in the `RtpIn` struct with a `write()` RwLock \*
-3. thread 3: check the `RtpIn` struct with a `read()` RwLock, and use the [cpal]() crate to play audio on the default interface
-
-I thought of using a [Concurrent Skip List](https://docs.rs/crossbeam-skiplist/0.0.0/crossbeam_skiplist/) for maintaining sorted concurrent packet insertions in the jitter buffer. However, for simplicity, in the caller example I wrap the `RtpJitterInStream` with an [`RwLock`](https://doc.rust-lang.org/std/sync/struct.RwLock.html) instead of a mutex to indicate that I'll only be serially writing to the inner `Vec<(Vec<u8>, u16, u32)>` from a UDP socket.
-
 Similar to the above send/receive test with `ffplay`, run the receiver examples to listen to the WAV file:
 
 
@@ -105,13 +86,38 @@ Sent samples at timestamp 23.605442176870746ms with RTP over UDP to 127.0.0.1:13
 ...
 Sent samples at timestamp 19175.487528344514ms with RTP over UDP to 127.0.0.1:1337
 Sent samples at timestamp 19183.35600907014ms with RTP over UDP to 127.0.0.1:1337
-End... set the market bit
+End... set the marker bit
 Sent samples at timestamp 19191.224489795764ms with RTP over UDP to 127.0.0.1:1337
 ```
 
-### xdp
+### testing packet loss concealment
 
-Currently in progress - an XDP program that will intercept and swap around the RTP packets sent by `wav_sender.rs`, to demonstrate jitter working in adverse network conditions.
+I wrote https://github.com/sevagh/ape - partly as an original idea, and partly to help test jitters by interfering with the UDP packets to test my implementation of jitter correction and packet loss concealment.
+
+With `ape` running to drop ~10% of packets:
+
+```
+sevagh:jitters $ sudo ./ape -udpDrop 10 lo
+{"level":"info","ts":1567363928.311507,"caller":"ape/ape.go:72","msg":"Dropping 10% UDP packets on port ALL on device lo, hit CTRL+C to stop"}
+{"level":"info","ts":1567363928.3116043,"caller":"ape/ape.go:74","msg":"Serving Prometheus metrics at http://127.0.0.1:8080/metrics"}
+```
+
+Audio sounds choppy, given that waveform correction is not perfect, but plays in its entirety:
+
+```
+Yielding audio slice for sequence 2436, timestamp 19167.619047619046ms
+Yielding audio slice for sequence 2437, timestamp 19167.619047619046ms
+Yielding audio slice for sequence 2438, timestamp 19167.619047619046ms
+Yielding audio slice for sequence 2439, timestamp 19191.224489795917ms
+audio done, exiting program
+Jitter stream stats: "corrected 0 out-of-order packets, concealed 244 lost packets"
+```
+
+We can see from the timestamps above that seqs 2438 and 2437 are copies of the original/correct seq 2436.
+
+### testing jitter correction
+
+Coming soon - this will depend on adding packet scrambling facilities to github.com/sevagh/ape
 
 ### android
 

@@ -76,6 +76,8 @@ fn main() {
         }
     });
 
+    let mut jitter_stats: String = "n/a".to_string();
+
     let play_rtp_stream = rtp_stream.clone(); // "play" ref to the RtpJitterInStream
     let player_thread = thread::spawn(move || {
         loop {
@@ -89,7 +91,7 @@ fn main() {
                     println!("Stream ended - performing plc and playing audio...");
                     rtp_stream_.plc();
 
-                    println!("Jitter stream stats: {:#?}", rtp_stream_.jitter_stats());
+                    jitter_stats = rtp_stream_.jitter_stats();
 
                     let host = cpal::default_host();
                     let event_loop = host.event_loop();
@@ -161,6 +163,7 @@ fn main() {
                                         }
                                         GeneratorState::Complete(()) => {
                                             println!("audio done, exiting program");
+                                            println!("Jitter stream stats: {:#?}", jitter_stats);
                                             process::exit(0);
                                         }
                                     }

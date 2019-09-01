@@ -98,8 +98,8 @@ impl RtpOutStream {
 
         let mut ret = vec![0u8; ret_size + size_of::<RtpHeader>()];
 
-        println!("End... set the market bit");
-        NetworkEndian::write_u16(&mut ret, hdr.flags | 0b1_0000000); //set the Market bit
+        println!("End... set the marker bit");
+        NetworkEndian::write_u16(&mut ret, hdr.flags | 0b1_0000000); //set the Marker bit
         NetworkEndian::write_u16(&mut ret[2..], hdr.sequence);
         NetworkEndian::write_u32(&mut ret[4..], hdr.timestamp);
         NetworkEndian::write_u32(&mut ret[8..], hdr.ssrc);

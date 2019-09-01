@@ -101,7 +101,10 @@ impl RtpJitterInStream {
                     break 'inner;
                 }
                 //need to fill in packets between prev and curr - copies of prev
-                self.audio_slices.insert(i, prev.clone());
+                let mut to_ins = prev.clone();
+                to_ins.1 += 1; //pretend the copy has the correct sequence, so the logic of this inner/outer loop PLC can continue working in the next iterations
+
+                self.audio_slices.insert(i, to_ins);
                 i += 1;
                 self.plc += 1; //increment plc counter
             }
