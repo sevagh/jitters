@@ -92,17 +92,7 @@ Sent samples at timestamp 19191.224489795764ms with RTP over UDP to 127.0.0.1:13
 
 ### testing packet loss concealment
 
-I wrote https://github.com/sevagh/ape - partly as an original idea, and partly to help test jitters by interfering with the UDP packets to test my implementation of jitter correction and packet loss concealment.
-
-With `ape` running to drop ~10% of packets:
-
-```
-sevagh:jitters $ sudo ./ape -udpDrop 10 lo
-{"level":"info","ts":1567363928.311507,"caller":"ape/ape.go:72","msg":"Dropping 10% UDP packets on port ALL on device lo, hit CTRL+C to stop"}
-{"level":"info","ts":1567363928.3116043,"caller":"ape/ape.go:74","msg":"Serving Prometheus metrics at http://127.0.0.1:8080/metrics"}
-```
-
-Audio sounds choppy, given that waveform correction is not perfect, but plays in its entirety:
+I used an XDP tool to intercept and randomly drop ~10% of UDP packets, and ran a sender + jitter receiver to test the PLC. The audio sounds choppy, given that waveform correction is not perfect, but plays in its entirety:
 
 ```
 Yielding audio slice for sequence 2436, timestamp 19167.619047619046ms
@@ -117,8 +107,4 @@ We can see from the timestamps above that seqs 2438 and 2437 are copies of the o
 
 ### testing jitter correction
 
-Coming soon - this will depend on adding packet scrambling facilities to github.com/sevagh/ape
-
-### android
-
-Coming soon - compiling jitters for NDK, and using [Oboe](https://github.com/google/oboe) to stream audio from an Android phone's microphone to an RtpServer running on Linux.
+Coming soon
