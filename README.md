@@ -92,7 +92,7 @@ Sent samples at timestamp 19191.224489795764ms with RTP over UDP to 127.0.0.1:13
 
 ### testing packet loss concealment
 
-I used an XDP tool to intercept and randomly drop ~10% of UDP packets, and ran a sender + jitter receiver to test the PLC. The audio sounds choppy, given that waveform correction is not perfect, but plays in its entirety:
+I my [XDP tool](https://github.com/sevagh/ape) to intercept and randomly drop ~10% of UDP packets, and ran a sender + jitter receiver to test the PLC. The audio sounds choppy, given that waveform correction is not perfect, but plays in its entirety:
 
 ```
 Yielding audio slice for sequence 2436, timestamp 19167.619047619046ms
@@ -107,4 +107,14 @@ We can see from the timestamps above that seqs 2438 and 2437 are copies of the o
 
 ### testing jitter correction
 
-Coming soon
+Similar to the PLC testing, I used my XDP tool ape to scramble 2%\* of incoming UDP packets on the jitters example port, which tests both the jitter correction and PLC (since the last packet might be received out of order):
+
+```
+Yielding audio slice for sequence 2439, timestamp 19191.224489795917ms
+audio done, exiting program
+Jitter stream stats: "corrected 11 out-of-order packets, concealed 61 lost packets"
+```
+
+The audio sounds coherent, but again with some glitchiness from the imperfect PLC.
+
+\*: In reality, more than 2%, since there's a feedback scrambling effect and packets can get randomly delayed multiple times

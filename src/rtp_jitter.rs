@@ -41,6 +41,9 @@ impl RtpJitterInStream {
     }
 
     pub fn next_packet(&mut self, next_packet: &[u8]) {
+        if self.ended {
+            return;
+        }
         let (next_header, next_audio) = RtpHeader::from_buf(next_packet);
 
         if (next_header.flags & 0b11111111_0_1111111)
@@ -53,28 +56,29 @@ impl RtpJitterInStream {
         let next_seq = next_header.sequence - self.first_header.sequence; //decrement the random initial values
         let next_tstamp = next_header.timestamp - self.first_header.timestamp;
 
-        let mut swap_idx = self.audio_slices.len() + 1;
-
-        // check if the sequence is in order
-        for i in (0..self.audio_slices.len()).rev() {
-            let seq_cmp = self.audio_slices[i].1;
-            if next_seq > seq_cmp {
-                break;
-            }
-            swap_idx = i;
-            continue;
-        }
-
         self.audio_slices.push((next_audio, next_seq, next_tstamp));
 
-        if swap_idx < self.audio_slices.len() {
-            let out_of_order = self.audio_slices.swap_remove(swap_idx);
-            self.audio_slices.push(out_of_order);
+        let mut swap_idx: Option<usize> = None;
+
+        // check if the sequence is in order
+        for i in (0..self.audio_slices.len() - 1).rev() {
+            let seq_cmp = self.audio_slices[i].1;
+            //println!("comparing {} to {}", next_seq, seq_cmp);
+            if next_seq < seq_cmp {
+                swap_idx = Some(i);
+                continue;
+            }
+            break;
+        }
+
+        if let Some(swap_idx_) = swap_idx {
+            let last = self.audio_slices.pop().unwrap();
+            self.audio_slices.insert(swap_idx_, last);
             self.jitter += 1;
         }
 
-        self.ended = ((next_header.flags & 0b1_0000000) >> 7) == 0b1;
         // check the Marker bit again
+        self.ended = ((next_header.flags & 0b1_0000000) >> 7) == 0b1;
 
         /* we can do stream quality analysis later
          * by iter over audio_slices, timestamps, sequences
@@ -85,6 +89,7 @@ impl RtpJitterInStream {
     pub fn plc(&mut self) {
         // we'll use Waveform substitution for packet loss concealment
         // replace the missing sequences with a copy of the previous
+
         let mut i: usize = 1;
 
         'outer: loop {

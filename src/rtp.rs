@@ -48,8 +48,8 @@ pub struct RtpHeader {
 
 impl RtpOutStream {
     pub fn new(channels: u16) -> Self {
-        let sequence = thread_rng().gen::<u16>() << 2; // avoid overflow for long audio clips
-        let timestamp = thread_rng().gen::<u32>() << 2; // avoid overflow for long audio clips
+        let sequence = thread_rng().gen::<u16>() >> 2; // avoid overflow for long audio clips
+        let timestamp = thread_rng().gen::<u32>() >> 2; // avoid overflow for long audio clips
         let ssrc = thread_rng().gen::<u32>();
 
         let flags: u16 = match channels {
@@ -57,7 +57,7 @@ impl RtpOutStream {
             2 => 0b10_0_0_0000_0_0001010,
             //     VV P X CCCC M PPPPPPP
             //see: https://tools.ietf.org/html/rfc3550#section-5.1
-            _ => panic!(),
+            _ => panic!("unsupported payload type"),
         }; //PT: 10,11 for L16 44100 mono,stereo
 
         RtpOutStream {

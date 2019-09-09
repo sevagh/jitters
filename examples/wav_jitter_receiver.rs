@@ -43,7 +43,7 @@ fn main() {
             println!("Received {:#?} bytes from {}:{}", amt, src.ip(), src.port());
             match put_packet_queue.push(buf.to_vec()) {
                 Ok(()) => {}
-                Err(PushError(_)) => panic!("couldn't push next packet onto the queue"),
+                Err(PushError(_)) => return //can't get lock, we done - assume player thread has finished,
             }
         }
     });
